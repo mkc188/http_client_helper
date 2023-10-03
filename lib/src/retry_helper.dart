@@ -1,7 +1,25 @@
 import 'package:http_client_helper/src/cancellation_token.dart';
+import 'dart:math' as math;
 
 class RetryHelper {
   RetryHelper._();
+
+  static final _rand = math.Random();
+  static final maxRandomizationFactor = 0.15;
+  static final interval = const Duration(milliseconds: 200);
+  static final maxAttempts = 10;
+  static final maxDelay = const Duration(seconds: 120);
+
+  static Duration computeDelay(int attempt) {
+    final exp = math.min(attempt, 31); // prevent overflows.
+    var delay = interval * math.pow(2, exp);
+    final randomPercent = _rand.nextDouble() * maxRandomizationFactor * 2 -
+        maxRandomizationFactor;
+    final randomDelay = delay.inMilliseconds * randomPercent;
+    delay = Duration(milliseconds: delay.inMilliseconds + randomDelay.ceil());
+    return delay > maxDelay ? maxDelay : delay;
+  }
+
   //try again，after millisecondsDelay time
   static Future<T?> tryRun<T>(
     Future<T> Function() asyncFunc, {
@@ -30,7 +48,7 @@ class RetryHelper {
       //try {
       if (attempts < retries) {
         final Future<void> future = CancellationTokenSource.register(
-            cancelToken, Future<void>.delayed(timeRetry, () {}));
+            cancelToken, Future<void>.delayed(timeRetry + computeDelay(attempts), () {}));
         await future;
       }
 
@@ -41,3 +59,4 @@ class RetryHelper {
     return null;
   }
 }
+
